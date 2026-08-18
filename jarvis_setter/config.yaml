@@ -1,7 +1,7 @@
-.name: "JARVIS Setter"
-description: "Szerver oldali élő MP3 audio streamer"
-version: "1.2.2"
-slug: "jarvis_setter"
+name: JARVIS Setter
+description: Szerver oldali élő MP3 audio streamer
+version: 1.2.2
+slug: jarvis_setter
 init: false
 arch:
   - aarch64
@@ -18,5 +18,5 @@ map:
   - config:rw
 ingress: true
 ingress_port: 8097
-panel_title: "JARVIS Setter"
-panel_icon: "mdi:radio-tower"
+panel_title: JARVIS Setter
+panel_icon: mdi:radio-tower
