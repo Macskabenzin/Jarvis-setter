@@ -4,7 +4,7 @@ from flask import Flask, Response, render_template_string, request
 
 app = Flask(__name__)
 
-# Győződj meg a mikrofon eszköz nevéről ALSA-ban (alapértelmezetten 'Capture' vagy 'Master')
+# ALSA hangerő szabályzó név (szükség esetén írd át pl. 'Mic'-re vagy 'Master'-re)
 MIXER_CONTROL = os.getenv("MIXER_CONTROL", "Capture")
 
 HTML_TEMPLATE = """
@@ -13,12 +13,12 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS Setter - Audio Stream</title>
+    <title>JARVIS Setter</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #111;
-            color: #fff;
+            background-color: #1a1a1a;
+            color: #ffffff;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -26,10 +26,10 @@ HTML_TEMPLATE = """
             margin: 0;
         }
         .card {
-            background: #222;
+            background: #2d2d2d;
             padding: 30px;
             border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             text-align: center;
             width: 320px;
         }
@@ -46,15 +46,16 @@ HTML_TEMPLATE = """
 <div class="card">
     <h2>JARVIS Live Stream</h2>
     
-    <!-- Audio Lejátszó -->
+    <!-- Élő MP3 Stream -->
     <audio id="audioPlayer" controls preload="none">
         <source src="stream" type="audio/mpeg">
+        <source src="stream_feed" type="audio/mpeg">
         A böngésződ nem támogatja a lejátszást.
     </audio>
 
     <!-- Mikrofon Hangerő Csúszka -->
     <div class="slider-container">
-        <label for="volume">Mikrofon érzékenység / Hangerő:</label>
+        <label for="volume">Mikrofon érzékenység:</label>
         <input type="range" id="volume" min="0" max="100" value="80" onchange="updateVolume(this.value)">
         <div class="vol-val"><span id="volNum">80</span>%</div>
     </div>
@@ -64,7 +65,7 @@ HTML_TEMPLATE = """
     function updateVolume(val) {
         document.getElementById('volNum').innerText = val;
         fetch('set_volume?level=' + val, { method: 'POST' })
-            .catch(err => console.error('Hangerő állítási hiba:', err));
+            .catch(err => console.error('Hangerő hiba:', err));
     }
 </script>
 
@@ -77,12 +78,13 @@ def index():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/stream')
+@app.route('/stream_feed')
 def stream():
-    """FFmpeg segítségével közvetíti az ALSA mikrofon hangját MP3 stílusként."""
+    """ALSA bemenet közvetítése MP3 formátumban FFmpeg segítségével."""
     cmd = [
         'ffmpeg',
         '-f', 'alsa',
-        '-i', 'default',        # Fizikai audio bemenet (ALSA)
+        '-i', 'default',
         '-acodec', 'libmp3lame',
         '-ab', '128k',
         '-ac', '1',
@@ -95,14 +97,14 @@ def stream():
 
 @app.route('/set_volume', methods=['POST'])
 def set_volume():
-    """Rendszerszintű ALSA mikrofon hangerő módosítása."""
+    """Mikrofon hangerő állítása az ALSA amixer parancsával."""
     level = request.args.get('level', '80')
     try:
-        # Beállítja az ALSA bemeneti hangerőt (pl. amixer set Capture 80%)
         subprocess.run(['amixer', 'set', MIXER_CONTROL, f'{level}%'], check=True)
         return {"status": "ok", "level": level}
     except Exception as e:
         return {"status": "error", "message": str(e)}, 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # A portnak pontosan meg kell egyeznie az ingress_port értékével (8097)
+    app.run(host='0.0.0.0', port=8097)
