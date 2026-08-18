@@ -1,7 +1,11 @@
+import os
 import subprocess
-from flask import Flask, Response, render_template_string
+from flask import Flask, Response, render_template_string, request
 
 app = Flask(__name__)
+
+# Győződj meg a mikrofon eszköz nevéről ALSA-ban (alapértelmezetten 'Capture' vagy 'Master')
+MIXER_CONTROL = os.getenv("MIXER_CONTROL", "Capture")
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -9,110 +13,96 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS Setter</title>
+    <title>JARVIS Setter - Audio Stream</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0; 
-            padding: 20px; 
-            background: #121212; 
-            color: #fff; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            min-height: 80vh; 
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #111;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
         }
-        .card { 
-            background: #1e1e1e; 
-            padding: 30px; 
-            border-radius: 12px; 
-            max-width: 400px; 
-            width: 100%; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.6); 
-            text-align: center; 
+        .card {
+            background: #222;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 320px;
         }
-        h2 { color: #00adb5; margin-top: 0; }
-        p { color: #aaa; margin-bottom: 25px; }
-        audio { width: 100%; outline: none; }
-        .live-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background-color: #ff4757;
-            border-radius: 50%;
-            margin-right: 6px;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.3; }
-            100% { opacity: 1; }
-        }
+        h2 { margin-bottom: 20px; color: #00bcd4; }
+        audio { width: 100%; margin-top: 15px; }
+        .slider-container { margin-top: 25px; text-align: left; }
+        label { display: block; margin-bottom: 8px; font-size: 14px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .vol-val { text-align: right; font-weight: bold; color: #00bcd4; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>JARVIS Setter</h2>
-    <p><span class="live-indicator"></span>Élő Stream közvetítés</p>
+    <h2>JARVIS Live Stream</h2>
     
-    <!-- Ingress relatív elérés -->
-    <audio controls autoplay src="stream_feed"></audio>
+    <!-- Audio Lejátszó -->
+    <audio id="audioPlayer" controls preload="none">
+        <source src="stream" type="audio/mpeg">
+        A böngésződ nem támogatja a lejátszást.
+    </audio>
+
+    <!-- Mikrofon Hangerő Csúszka -->
+    <div class="slider-container">
+        <label for="volume">Mikrofon érzékenység / Hangerő:</label>
+        <input type="range" id="volume" min="0" max="100" value="80" onchange="updateVolume(this.value)">
+        <div class="vol-val"><span id="volNum">80</span>%</div>
+    </div>
 </div>
+
+<script>
+    function updateVolume(val) {
+        document.getElementById('volNum').innerText = val;
+        fetch('set_volume?level=' + val, { method: 'POST' })
+            .catch(err => console.error('Hangerő állítási hiba:', err));
+    }
+</script>
 
 </body>
 </html>
 """
 
-
-def generate_audio_stream():
-    """FFmpeg folyamat indítása az ALSA mikrofon hangjának továbbítására"""
-    cmd = [
-        "ffmpeg",
-        "-f",
-        "alsa",
-        "-i",
-        "default",
-        "-ac",
-        "1",  # Mono
-        "-ar",
-        "44100",  # 44.1 kHz
-        "-b:a",
-        "128k",  # 128 kbps MP3
-        "-f",
-        "mp3",
-        "pipe:1",
-    ]
-
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=1024
-    )
-    try:
-        while True:
-            data = process.stdout.read(1024)
-            if not data:
-                break
-            yield data
-    finally:
-        process.kill()
-
-
-@app.route("/")
+@app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+@app.route('/stream')
+def stream():
+    """FFmpeg segítségével közvetíti az ALSA mikrofon hangját MP3 stílusként."""
+    cmd = [
+        'ffmpeg',
+        '-f', 'alsa',
+        '-i', 'default',        # Fizikai audio bemenet (ALSA)
+        '-acodec', 'libmp3lame',
+        '-ab', '128k',
+        '-ac', '1',
+        '-ar', '44100',
+        '-f', 'mp3',
+        'pipe:1'
+    ]
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return Response(process.stdout, mimetype='audio/mpeg')
 
-@app.route("/stream_feed")
-def stream_feed():
-    """Szerver oldali MP3 stream végpont"""
-    response = Response(generate_audio_stream(), mimetype="audio/mpeg")
-    response.headers["Cache-Control"] = (
-        "no-cache, no-store, must-revalidate, private"
-    )
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
+@app.route('/set_volume', methods=['POST'])
+def set_volume():
+    """Rendszerszintű ALSA mikrofon hangerő módosítása."""
+    level = request.args.get('level', '80')
+    try:
+        # Beállítja az ALSA bemeneti hangerőt (pl. amixer set Capture 80%)
+        subprocess.run(['amixer', 'set', MIXER_CONTROL, f'{level}%'], check=True)
+        return {"status": "ok", "level": level}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8097)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
