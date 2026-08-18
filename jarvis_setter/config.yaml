@@ -1,6 +1,6 @@
-name: "JARVIS Setter"
+.name: "JARVIS Setter"
 description: "Szerver oldali élő MP3 audio streamer"
-version: "1.2.1"
+version: "1.2.2"
 slug: "jarvis_setter"
 init: false
 arch:
